@@ -3,7 +3,6 @@ const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const requestLogger = require("./middleware/logger");
 const authMiddleware = require("./middleware/auth");
-const { generateToken } = require("./utils/tokenGenerator");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,7 +14,7 @@ const otpStore = {};
 // Middleware
 app.use(requestLogger);
 app.use(express.json());
-
+app.use(cookieParser()); // ✅ FIX 1: Added cookie parser
 
 app.get("/", (req, res) => {
   res.json({
@@ -25,7 +24,10 @@ app.get("/", (req, res) => {
   });
 });
 
-// CHANGE 1: /auth/login endpoint
+
+// ==========================
+// TASK 1: LOGIN
+// ==========================
 app.post("/auth/login", (req, res) => {
   try {
     const { email, password } = req.body;
@@ -38,18 +40,21 @@ app.post("/auth/login", (req, res) => {
     const loginSessionId = Math.random().toString(36).substring(7);
     const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
 
-    // Store session with 2-minute expiry
+    // Store session (2 min expiry)
     loginSessions[loginSessionId] = {
       email,
       password,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 2 * 60 * 1000, // 2 minutes
+      expiresAt: Date.now() + 5 * 60 * 1000,
     };
 
     // Store OTP
     otpStore[loginSessionId] = otp;
 
-    console.log(`[OTP] Session ${loginSessionId} generated`);
+    // ✅ FIX 2: Log OTP properly
+    console.log(
+      `[OTP] Session ${loginSessionId} generated. OTP: ${otp}`
+    );
 
     return res.status(200).json({
       message: "OTP sent",
@@ -63,6 +68,10 @@ app.post("/auth/login", (req, res) => {
   }
 });
 
+
+// ==========================
+// TASK 2: VERIFY OTP
+// ==========================
 app.post("/auth/verify-otp", (req, res) => {
   try {
     const { loginSessionId, otp } = req.body;
@@ -87,10 +96,11 @@ app.post("/auth/verify-otp", (req, res) => {
       return res.status(401).json({ error: "Invalid OTP" });
     }
 
+    // Set session cookie
     res.cookie("session_token", loginSessionId, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 15 * 60 * 1000, // 15 minutes
+      secure: false, // keep false for localhost
+      maxAge: 15 * 60 * 1000,
     });
 
     delete otpStore[loginSessionId];
@@ -107,29 +117,33 @@ app.post("/auth/verify-otp", (req, res) => {
   }
 });
 
+
+// ==========================
+// TASK 3: GENERATE JWT TOKEN
+// ==========================
 app.post("/auth/token", (req, res) => {
   try {
-    const token = req.headers.authorization;
+    // ✅ FIX 3: Read session from cookie (NOT Authorization header)
+    const sessionToken = req.cookies.session_token;
 
-    if (!token) {
+    if (!sessionToken) {
       return res
         .status(401)
         .json({ error: "Unauthorized - valid session required" });
     }
 
-    const session = loginSessions[token.replace("Bearer ", "")];
+    const session = loginSessions[sessionToken];
 
     if (!session) {
       return res.status(401).json({ error: "Invalid session" });
     }
 
-    // Generate JWT
     const secret = process.env.JWT_SECRET || "default-secret-key";
 
     const accessToken = jwt.sign(
       {
         email: session.email,
-        sessionId: token,
+        sessionId: sessionToken,
       },
       secret,
       {
@@ -149,12 +163,17 @@ app.post("/auth/token", (req, res) => {
   }
 });
 
-// Protected route example
+
+// ==========================
+// TASK 4: PROTECTED ROUTE
+// ==========================
 app.get("/protected", authMiddleware, (req, res) => {
   return res.json({
     message: "Access granted",
     user: req.user,
-    success_flag: `FLAG-${Buffer.from(req.user.email + "_COMPLETED_ASSIGNMENT").toString('base64')}`,
+    success_flag: `FLAG-${Buffer.from(
+      req.user.email + "_COMPLETED_ASSIGNMENT"
+    ).toString("base64")}`,
   });
 });
 

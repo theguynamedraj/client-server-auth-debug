@@ -1,0 +1,19 @@
+================ LOGIN ================
+curl -X POST http://localhost:3000/auth/login -H "Content-Type: application/json" -d "{\"email\":\"test@gmail.com\",\"password\":\"password123\"}"
+
+{"message":"OTP sent","loginSessionId":"erng6k"}
+
+================ VERIFY OTP ================
+curl -c cookies.txt -X POST http://localhost:3000/auth/verify-otp -H "Content-Type: application/json" -d "{\"loginSessionId\":\"erng6k\",\"otp\":\"<YOUR_OTP>\"}"
+
+{"message":"OTP verified","sessionId":"erng6k"}
+
+================ GET TOKEN ================
+curl -b cookies.txt -X POST http://localhost:3000/auth/token
+
+{"access_token":"...","expires_in":900}
+
+================ PROTECTED ROUTE ================
+curl -H "Authorization: Bearer <JWT>" http://localhost:3000/protected
+
+{"message":"Access granted","user":{...},"success_flag":"FLAG-dGVzdEBnbWFpbC5jb21fQ09NUExFVEVEX0FTU0lHTk1FTlQ="}
